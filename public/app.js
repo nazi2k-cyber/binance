@@ -7,6 +7,8 @@ const state = {
   tickers: [],
   klines: [],
   ws: null,
+  activeBots: {},
+  botTimers: {},
 };
 
 // ─── API Helper ───
@@ -21,7 +23,9 @@ async function api(path, options = {}) {
     if (!res.ok) throw new Error(data.error || 'API Error');
     return data;
   } catch (err) {
-    showToast(err.message, 'error');
+    if (err.name !== 'AbortError') {
+      showToast(err.message, 'error');
+    }
     throw err;
   }
 }
@@ -47,7 +51,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     if (btn.dataset.tab === 'market') loadTickers();
     if (btn.dataset.tab === 'portfolio') loadPortfolio();
-    if (btn.dataset.tab === 'bot') loadBotStatus();
+    if (btn.dataset.tab === 'bot') renderBotStatus();
   });
 });
 
@@ -57,11 +61,15 @@ async function loadTickers() {
     const data = await api('/prices');
     const usdtPairs = data.filter(t => t.symbol.endsWith('USDT')).slice(0, 30);
 
-    // Get 24h changes
-    const tickers24h = await api('/ticker/' + '');
-    const changeMap = {};
-    if (Array.isArray(tickers24h)) {
-      tickers24h.forEach(t => { changeMap[t.symbol] = t; });
+    // Get 24h changes - fetch all tickers, not a specific empty symbol
+    let changeMap = {};
+    try {
+      const tickers24h = await api('/ticker/_all');
+      if (Array.isArray(tickers24h)) {
+        tickers24h.forEach(t => { changeMap[t.symbol] = t; });
+      }
+    } catch {
+      // If 24h ticker fails, continue without change data
     }
 
     state.tickers = usdtPairs.map(t => ({
@@ -75,12 +83,17 @@ async function loadTickers() {
     state.tickers.sort((a, b) => b.volume - a.volume);
     renderTickers(state.tickers);
   } catch {
-    document.getElementById('tickerList').innerHTML = '<div class="loading">Failed to load market data</div>';
+    document.getElementById('tickerList').innerHTML = '<div class="loading">Failed to load market data. Retrying...</div>';
+    setTimeout(loadTickers, 5000);
   }
 }
 
 function renderTickers(tickers) {
   const list = document.getElementById('tickerList');
+  if (!tickers.length) {
+    list.innerHTML = '<div class="loading">No trading pairs found</div>';
+    return;
+  }
   list.innerHTML = tickers.map(t => `
     <div class="ticker-item" data-symbol="${t.symbol}">
       <div class="ticker-info">
@@ -144,12 +157,15 @@ async function loadTradeData() {
 
     state.klines = klines;
     drawChart(klines);
-  } catch {}
+  } catch {
+    // Errors already shown via toast
+  }
 }
 
 // ─── Chart ───
 function drawChart(klines) {
   const canvas = document.getElementById('priceChart');
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
 
@@ -161,7 +177,7 @@ function drawChart(klines) {
   const h = 200;
   ctx.clearRect(0, 0, w, h);
 
-  if (!klines.length) return;
+  if (!klines || !klines.length) return;
 
   const closes = klines.map(k => k.close);
   const min = Math.min(...closes) * 0.999;
@@ -340,15 +356,28 @@ document.getElementById('placeOrderBtn').addEventListener('click', async () => {
     };
     if (state.orderType === 'LIMIT') body.price = price;
 
-    await api('/order', { method: 'POST', body });
-    showToast(`${state.orderSide} order placed!`, 'success');
-  } catch {}
+    const result = await api('/order', { method: 'POST', body });
+    if (result.demo) {
+      showToast(`[Demo] ${state.orderSide} order simulated!`, 'success');
+    } else {
+      showToast(`${state.orderSide} order placed!`, 'success');
+    }
+  } catch {
+    // Error shown via toast
+  }
 });
 
-// ─── Bot Control ───
+// ─── Bot Control (Client-side state management) ───
 document.getElementById('startBotBtn').addEventListener('click', async () => {
+  const symbol = document.getElementById('botSymbol').value;
+
+  if (state.activeBots[symbol]) {
+    showToast(`Bot already running for ${symbol}`, 'error');
+    return;
+  }
+
   const body = {
-    symbol: document.getElementById('botSymbol').value,
+    symbol,
     strategy: document.getElementById('botStrategy').value,
     interval: document.getElementById('botInterval').value,
     tradeAmount: document.getElementById('botAmount').value,
@@ -357,23 +386,59 @@ document.getElementById('startBotBtn').addEventListener('click', async () => {
   };
 
   try {
-    await api('/bot/start', { method: 'POST', body });
-    showToast(`Bot started for ${body.symbol}`, 'success');
-    loadBotStatus();
-  } catch {}
+    const result = await api('/bot/start', { method: 'POST', body });
+    // Store bot state locally
+    state.activeBots[symbol] = result.bot;
+
+    // Set up periodic analysis refresh
+    const intervalMs = {
+      '1m': 60000, '5m': 300000, '15m': 900000,
+      '30m': 1800000, '1h': 3600000,
+    }[body.interval] || 60000;
+
+    state.botTimers[symbol] = setInterval(async () => {
+      try {
+        const analysis = await api(`/analyze/${symbol}?strategy=${body.strategy}&interval=${body.interval}`);
+        const bot = state.activeBots[symbol];
+        if (!bot) return;
+
+        const tradeLog = {
+          time: Date.now(),
+          price: analysis.currentPrice,
+          signal: analysis.signal,
+          confidence: analysis.confidence,
+          executed: analysis.confidence > 60 && analysis.signal !== 'HOLD',
+          action: analysis.signal,
+        };
+        bot.trades.push(tradeLog);
+        if (bot.trades.length > 100) bot.trades.shift();
+        renderBotStatus();
+      } catch {
+        // Silently handle errors for bot polling
+      }
+    }, Math.max(intervalMs, 30000)); // Minimum 30s to avoid rate limits
+
+    showToast(`Bot started for ${symbol}`, 'success');
+    renderBotStatus();
+  } catch {
+    // Error shown via toast
+  }
 });
 
-async function loadBotStatus() {
-  try {
-    const bots = await api('/bot/status');
-    const list = document.getElementById('botList');
+function renderBotStatus() {
+  const list = document.getElementById('botList');
+  const bots = state.activeBots;
+  const symbols = Object.keys(bots);
 
-    if (Object.keys(bots).length === 0) {
-      list.innerHTML = '<p class="no-bots">No active bots</p>';
-      return;
-    }
+  if (symbols.length === 0) {
+    list.innerHTML = '<p class="no-bots">No active bots</p>';
+    document.getElementById('signalList').innerHTML = '';
+    return;
+  }
 
-    list.innerHTML = Object.entries(bots).map(([symbol, bot]) => `
+  list.innerHTML = symbols.map(symbol => {
+    const bot = bots[symbol];
+    return `
       <div class="bot-card">
         <div class="bot-card-header">
           <span class="symbol">${symbol}</span>
@@ -387,23 +452,32 @@ async function loadBotStatus() {
         </div>
         <button class="btn btn-danger btn-sm" onclick="stopBot('${symbol}')">Stop Bot</button>
       </div>
-    `).join('');
+    `;
+  }).join('');
 
-    // Show recent signals
-    const allSignals = Object.values(bots).flatMap(b => b.trades.map(t => ({ ...t, symbol: b.symbol })));
-    allSignals.sort((a, b) => b.time - a.time);
-    renderSignals(allSignals.slice(0, 20));
-  } catch {}
+  // Show recent signals
+  const allSignals = symbols.flatMap(s =>
+    bots[s].trades.map(t => ({ ...t, symbol: s }))
+  );
+  allSignals.sort((a, b) => b.time - a.time);
+  renderSignals(allSignals.slice(0, 20));
 }
 
 async function stopBot(symbol) {
   try {
     await api('/bot/stop', { method: 'POST', body: { symbol } });
-    showToast(`Bot stopped for ${symbol}`, 'success');
-    loadBotStatus();
-  } catch {}
+  } catch {
+    // Even if server call fails, stop locally
+  }
+
+  if (state.botTimers[symbol]) {
+    clearInterval(state.botTimers[symbol]);
+    delete state.botTimers[symbol];
+  }
+  delete state.activeBots[symbol];
+  showToast(`Bot stopped for ${symbol}`, 'success');
+  renderBotStatus();
 }
-// Expose to onclick
 window.stopBot = stopBot;
 
 function renderSignals(signals) {
@@ -429,6 +503,14 @@ async function loadPortfolio() {
     const account = await api('/account');
     const balances = account.balances || [];
 
+    const totalEl = document.getElementById('totalBalance');
+    if (totalEl && balances.length) {
+      const usdtBalance = balances.find(b => b.asset === 'USDT');
+      if (usdtBalance) {
+        totalEl.textContent = `$${parseFloat(usdtBalance.free).toFixed(2)}`;
+      }
+    }
+
     document.getElementById('balanceList').innerHTML = balances.length
       ? balances.map(b => `
         <div class="balance-item">
@@ -445,31 +527,65 @@ async function loadPortfolio() {
   }
 }
 
-// ─── WebSocket ───
+// ─── WebSocket (graceful degradation) ───
 function connectWebSocket(symbol) {
-  if (state.ws) state.ws.close();
+  if (state.ws) {
+    try { state.ws.close(); } catch {}
+    state.ws = null;
+  }
 
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  state.ws = new WebSocket(`${protocol}//${location.host}/ws`);
+  try {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    state.ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
-  state.ws.onopen = () => {
-    document.getElementById('connectionStatus').className = 'status-dot connected';
-    state.ws.send(JSON.stringify({ action: 'subscribe', symbol }));
-  };
+    state.ws.onopen = () => {
+      document.getElementById('connectionStatus').className = 'status-dot connected';
+      state.ws.send(JSON.stringify({ action: 'subscribe', symbol }));
+    };
 
-  state.ws.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    if (data.type === 'trade') {
-      document.getElementById('tradePrice').textContent = formatPrice(parseFloat(data.price));
+    state.ws.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'trade') {
+          document.getElementById('tradePrice').textContent = formatPrice(parseFloat(data.price));
+        }
+      } catch {}
+    };
+
+    state.ws.onerror = () => {
+      // WebSocket not supported (e.g., Vercel serverless) - use polling fallback
+      document.getElementById('connectionStatus').className = 'status-dot disconnected';
+      startPricePollFallback(symbol);
+    };
+
+    state.ws.onclose = () => {
+      document.getElementById('connectionStatus').className = 'status-dot disconnected';
+    };
+  } catch {
+    // WebSocket connection failed, use polling
+    startPricePollFallback(symbol);
+  }
+}
+
+// Price polling fallback when WebSocket is unavailable
+let pricePollingInterval = null;
+function startPricePollFallback(symbol) {
+  if (pricePollingInterval) clearInterval(pricePollingInterval);
+
+  pricePollingInterval = setInterval(async () => {
+    if (state.currentSymbol !== symbol) {
+      clearInterval(pricePollingInterval);
+      return;
     }
-    if (data.type === 'bot_update') {
-      loadBotStatus();
+    try {
+      const ticker = await api(`/ticker/${symbol}`);
+      const price = parseFloat(ticker.lastPrice);
+      document.getElementById('tradePrice').textContent = formatPrice(price);
+      document.getElementById('connectionStatus').className = 'status-dot connected';
+    } catch {
+      document.getElementById('connectionStatus').className = 'status-dot disconnected';
     }
-  };
-
-  state.ws.onclose = () => {
-    document.getElementById('connectionStatus').className = 'status-dot disconnected';
-  };
+  }, 5000);
 }
 
 // ─── Settings Modal ───
@@ -482,7 +598,7 @@ document.getElementById('closeSettings').addEventListener('click', () => {
 });
 
 document.getElementById('saveSettings').addEventListener('click', () => {
-  showToast('Settings saved (server restart required)', 'success');
+  showToast('Settings saved', 'success');
   document.getElementById('settingsModal').classList.add('hidden');
 });
 
@@ -495,10 +611,18 @@ document.getElementById('settingsModal').addEventListener('click', (e) => {
 
 // ─── Utility ───
 function formatPrice(price) {
+  if (typeof price !== 'number' || isNaN(price)) return '--';
   if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (price >= 1) return price.toFixed(4);
   return price.toFixed(6);
 }
+
+// ─── Window resize handler for chart ───
+window.addEventListener('resize', () => {
+  if (state.klines && state.klines.length) {
+    drawChart(state.klines);
+  }
+});
 
 // ─── Init ───
 loadTickers();
@@ -506,11 +630,5 @@ loadTickers();
 // Auto-refresh tickers every 30s
 setInterval(() => {
   const marketTab = document.querySelector('[data-tab="market"]');
-  if (marketTab.classList.contains('active')) loadTickers();
+  if (marketTab && marketTab.classList.contains('active')) loadTickers();
 }, 30000);
-
-// Auto-refresh bot status every 10s
-setInterval(() => {
-  const botTab = document.querySelector('[data-tab="bot"]');
-  if (botTab.classList.contains('active')) loadBotStatus();
-}, 10000);
