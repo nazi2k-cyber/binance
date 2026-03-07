@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0e11">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Algo Trading - Binance</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <h1 class="logo">AlgoTrade</h1>
+    </div>
+    <div class="header-right">
+      <span id="connectionStatus" class="status-dot disconnected"></span>
+      <button id="settingsBtn" class="icon-btn">&#9881;</button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="market">Market</button>
+    <button class="tab-btn" data-tab="trade">Trade</button>
+    <button class="tab-btn" data-tab="bot">Bot</button>
+    <button class="tab-btn" data-tab="portfolio">Portfolio</button>
+  </nav>
+
+  <!-- Tab Content -->
+  <main class="content">
+
+    <!-- Market Tab -->
+    <section id="tab-market" class="tab-content active">
+      <div class="search-bar">
+        <input type="text" id="symbolSearch" placeholder="Search symbol (e.g. BTC)">
+      </div>
+      <div id="tickerList" class="ticker-list">
+        <div class="loading">Loading market data...</div>
+      </div>
+    </section>
+
+    <!-- Trade Tab -->
+    <section id="tab-trade" class="tab-content">
+      <div class="symbol-header" id="tradeSymbolHeader">
+        <h2 id="tradeSymbol">BTCUSDT</h2>
+        <div class="price-display">
+          <span id="tradePrice" class="big-price">--</span>
+          <span id="tradeChange" class="price-change">--</span>
+        </div>
+      </div>
+
+      <!-- Mini Chart -->
+      <div class="chart-container">
+        <canvas id="priceChart"></canvas>
+        <div class="chart-controls">
+          <button class="interval-btn active" data-interval="1m">1m</button>
+          <button class="interval-btn" data-interval="5m">5m</button>
+          <button class="interval-btn" data-interval="15m">15m</button>
+          <button class="interval-btn" data-interval="1h">1h</button>
+          <button class="interval-btn" data-interval="4h">4h</button>
+          <button class="interval-btn" data-interval="1d">1d</button>
+        </div>
+      </div>
+
+      <!-- Analysis Panel -->
+      <div class="analysis-panel" id="analysisPanel">
+        <h3>Strategy Analysis</h3>
+        <div class="strategy-selector">
+          <select id="strategySelect">
+            <option value="combined">Combined</option>
+            <option value="sma">SMA Crossover</option>
+            <option value="rsi">RSI</option>
+            <option value="macd">MACD</option>
+            <option value="bollinger">Bollinger Bands</option>
+          </select>
+          <button id="analyzeBtn" class="btn btn-primary">Analyze</button>
+        </div>
+        <div id="analysisResult" class="analysis-result"></div>
+      </div>
+
+      <!-- Order Form -->
+      <div class="order-form">
+        <div class="order-tabs">
+          <button class="order-tab-btn buy active" data-side="BUY">Buy</button>
+          <button class="order-tab-btn sell" data-side="SELL">Sell</button>
+        </div>
+        <div class="order-type-row">
+          <button class="type-btn active" data-type="LIMIT">Limit</button>
+          <button class="type-btn" data-type="MARKET">Market</button>
+        </div>
+        <div class="form-group" id="priceGroup">
+          <label>Price (USDT)</label>
+          <input type="number" id="orderPrice" step="any" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" id="orderAmount" step="any" placeholder="0.00">
+        </div>
+        <div class="percent-btns">
+          <button class="pct-btn" data-pct="25">25%</button>
+          <button class="pct-btn" data-pct="50">50%</button>
+          <button class="pct-btn" data-pct="75">75%</button>
+          <button class="pct-btn" data-pct="100">100%</button>
+        </div>
+        <div class="order-total">
+          Total: <span id="orderTotal">0.00</span> USDT
+        </div>
+        <button id="placeOrderBtn" class="btn btn-buy btn-full">Buy BTCUSDT</button>
+      </div>
+    </section>
+
+    <!-- Bot Tab -->
+    <section id="tab-bot" class="tab-content">
+      <div class="bot-setup">
+        <h3>Algo Trading Bot</h3>
+        <div class="form-group">
+          <label>Symbol</label>
+          <select id="botSymbol">
+            <option value="BTCUSDT">BTC/USDT</option>
+            <option value="ETHUSDT">ETH/USDT</option>
+            <option value="BNBUSDT">BNB/USDT</option>
+            <option value="SOLUSDT">SOL/USDT</option>
+            <option value="XRPUSDT">XRP/USDT</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Strategy</label>
+          <select id="botStrategy">
+            <option value="combined">Combined (All Strategies)</option>
+            <option value="sma">SMA Crossover</option>
+            <option value="rsi">RSI Oversold/Overbought</option>
+            <option value="macd">MACD Signal</option>
+            <option value="bollinger">Bollinger Band Bounce</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Interval</label>
+          <select id="botInterval">
+            <option value="1m">1 minute</option>
+            <option value="5m">5 minutes</option>
+            <option value="15m" selected>15 minutes</option>
+            <option value="1h">1 hour</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Trade Amount (USDT)</label>
+            <input type="number" id="botAmount" value="100" step="1">
+          </div>
+          <div class="form-group half">
+            <label>Stop Loss (%)</label>
+            <input type="number" id="botStopLoss" value="2" step="0.1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Take Profit (%)</label>
+            <input type="number" id="botTakeProfit" value="3" step="0.1">
+          </div>
+        </div>
+        <button id="startBotBtn" class="btn btn-primary btn-full">Start Bot</button>
+      </div>
+
+      <!-- Active Bots -->
+      <div class="active-bots" id="activeBots">
+        <h3>Active Bots</h3>
+        <div id="botList" class="bot-list">
+          <p class="no-bots">No active bots</p>
+        </div>
+      </div>
+
+      <!-- Bot Trade Log -->
+      <div class="trade-log" id="tradeLog">
+        <h3>Trade Signals</h3>
+        <div id="signalList" class="signal-list"></div>
+      </div>
+    </section>
+
+    <!-- Portfolio Tab -->
+    <section id="tab-portfolio" class="tab-content">
+      <div class="portfolio-summary" id="portfolioSummary">
+        <div class="portfolio-card">
+          <span class="label">Total Balance</span>
+          <span id="totalBalance" class="value">--</span>
+        </div>
+      </div>
+      <div class="balance-list" id="balanceList">
+        <div class="loading">Connect API to view portfolio</div>
+      </div>
+      <div class="open-orders">
+        <h3>Open Orders</h3>
+        <div id="openOrdersList" class="orders-list">
+          <p class="no-orders">No open orders</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button id="closeSettings" class="close-btn">&times;</button>
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Binance API Key">
+      </div>
+      <div class="form-group">
+        <label>API Secret</label>
+        <input type="password" id="apiSecretInput" placeholder="Binance API Secret">
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="testnetToggle" checked> Use Testnet
+        </label>
+      </div>
+      <button id="saveSettings" class="btn btn-primary btn-full">Save</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
