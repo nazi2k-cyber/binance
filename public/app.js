@@ -58,7 +58,7 @@ async function loadTickers() {
     const usdtPairs = data.filter(t => t.symbol.endsWith('USDT')).slice(0, 30);
 
     // Get 24h changes
-    const tickers24h = await api('/ticker/' + '');
+    const tickers24h = await api('/tickers');
     const changeMap = {};
     if (Array.isArray(tickers24h)) {
       tickers24h.forEach(t => { changeMap[t.symbol] = t; });

@@ -110,6 +110,16 @@ app.get('/api/prices', async (req, res) => {
   }
 });
 
+// Get all 24h tickers
+app.get('/api/tickers', async (req, res) => {
+  try {
+    const data = await binance.getTicker24h();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Place order
 app.post('/api/order', async (req, res) => {
   try {
@@ -326,8 +336,14 @@ app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '..', 'public', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Testnet mode: ${process.env.USE_TESTNET !== 'false'}`);
-});
+// Export app for Vercel serverless
+export default app;
+
+// Start server only in local/non-serverless environments
+if (process.env.VERCEL !== '1') {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Testnet mode: ${process.env.USE_TESTNET !== 'false'}`);
+  });
+}
