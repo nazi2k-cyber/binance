@@ -48,6 +48,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'market') loadTickers();
     if (btn.dataset.tab === 'portfolio') loadPortfolio();
     if (btn.dataset.tab === 'bot') loadBotStatus();
+    if (btn.dataset.tab === 'logs') loadErrorLogs();
   });
 });
 
@@ -465,6 +466,12 @@ function connectWebSocket(symbol) {
     if (data.type === 'bot_update') {
       loadBotStatus();
     }
+    if (data.type === 'error_log') {
+      const logsTab = document.querySelector('[data-tab="logs"]');
+      if (logsTab && logsTab.classList.contains('active')) {
+        loadErrorLogs();
+      }
+    }
   };
 
   state.ws.onclose = () => {
@@ -516,6 +523,74 @@ function formatPrice(price) {
   if (price >= 1) return price.toFixed(4);
   return price.toFixed(6);
 }
+
+// ─── Error Logs ───
+async function loadErrorLogs() {
+  const level = document.getElementById('logLevelFilter').value;
+  const source = document.getElementById('logSourceFilter').value;
+  let query = '/logs?limit=200';
+  if (level) query += `&level=${level}`;
+  if (source) query += `&source=${source}`;
+
+  try {
+    const logs = await api(query);
+    renderErrorLogs(logs);
+  } catch {
+    document.getElementById('logsList').innerHTML = '<p class="no-logs">Failed to load logs</p>';
+  }
+}
+
+function renderErrorLogs(logs) {
+  const list = document.getElementById('logsList');
+  const stats = document.getElementById('logsStats');
+
+  if (!logs.length) {
+    list.innerHTML = '<p class="no-logs">No error logs</p>';
+    stats.innerHTML = '';
+    return;
+  }
+
+  // Stats
+  const errorCount = logs.filter(l => l.level === 'error').length;
+  const warnCount = logs.filter(l => l.level === 'warn').length;
+  const infoCount = logs.filter(l => l.level === 'info').length;
+  stats.innerHTML = `
+    <span class="log-stat error-stat">${errorCount} errors</span>
+    <span class="log-stat warn-stat">${warnCount} warnings</span>
+    <span class="log-stat info-stat">${infoCount} info</span>
+    <span class="log-stat total-stat">${logs.length} total</span>
+  `;
+
+  list.innerHTML = logs.map(log => {
+    const time = new Date(log.timestamp);
+    const timeStr = time.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) +
+      ' ' + time.toLocaleTimeString('ko-KR', { hour12: false });
+    const details = log.details ? `<div class="log-details">${JSON.stringify(log.details)}</div>` : '';
+    return `
+      <div class="log-item log-${log.level}">
+        <div class="log-item-header">
+          <span class="log-level-badge ${log.level}">${log.level.toUpperCase()}</span>
+          <span class="log-source">${log.source}</span>
+          <span class="log-time">${timeStr}</span>
+        </div>
+        <div class="log-message">${log.message}</div>
+        ${details}
+      </div>
+    `;
+  }).join('');
+}
+
+document.getElementById('logLevelFilter').addEventListener('change', loadErrorLogs);
+document.getElementById('logSourceFilter').addEventListener('change', loadErrorLogs);
+document.getElementById('refreshLogsBtn').addEventListener('click', loadErrorLogs);
+
+document.getElementById('clearLogsBtn').addEventListener('click', async () => {
+  try {
+    await api('/logs', { method: 'DELETE' });
+    showToast('Logs cleared', 'success');
+    loadErrorLogs();
+  } catch {}
+});
 
 // ─── Init ───
 // Check API key status on startup
