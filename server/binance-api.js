@@ -121,4 +121,22 @@ export class BinanceAPI {
   async getAllOrders(symbol, limit = 50) {
     return this.request('GET', '/v3/allOrders', { symbol, limit }, true);
   }
+
+  updateKeys(apiKey, apiSecret) {
+    this.apiKey = apiKey;
+    this.apiSecret = apiSecret;
+  }
+
+  setTestnet(useTestnet) {
+    this.baseUrl = useTestnet
+      ? 'https://testnet.binance.vision/api'
+      : 'https://api.binance.com/api';
+    this.wsBaseUrl = useTestnet
+      ? 'wss://testnet.binance.vision/ws'
+      : 'wss://stream.binance.com:9443/ws';
+  }
+
+  hasKeys() {
+    return !!(this.apiKey && this.apiSecret);
+  }
 }
