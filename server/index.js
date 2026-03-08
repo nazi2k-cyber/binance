@@ -28,6 +28,9 @@ const binance = new BinanceAPI(
 // Active algo trading bots
 const activeBots = new Map();
 
+// WebSocket clients (declared early for use in addErrorLog)
+const wsClients = new Set();
+
 // ─── Error Log Store ───
 const errorLogs = [];
 const MAX_ERROR_LOGS = 500;
@@ -357,8 +360,6 @@ app.delete('/api/logs', (req, res) => {
 });
 
 // ─── WebSocket ───
-
-const wsClients = new Set();
 
 wss.on('connection', (ws) => {
   wsClients.add(ws);
