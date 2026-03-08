@@ -31,25 +31,37 @@ const activeBots = new Map();
 // ─── API Key Management ───
 
 // Update API keys at runtime
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
   const { apiKey, apiSecret, useTestnet } = req.body;
 
   if (!apiKey || !apiSecret) {
     return res.status(400).json({ error: 'API Key and Secret are required' });
   }
 
-  binance.updateKeys(apiKey, apiSecret);
+  binance.updateKeys(apiKey, apiSecret, useTestnet);
 
-  if (typeof useTestnet === 'boolean') {
-    binance.setTestnet(useTestnet);
+  // Verify the API keys by making a test request
+  try {
+    await binance.getAccount();
+    res.json({ message: 'API keys verified and saved successfully', hasKeys: true, verified: true });
+  } catch (err) {
+    // Keys are saved but verification failed
+    res.json({
+      message: 'API keys saved, but verification failed: ' + err.message,
+      hasKeys: true,
+      verified: false,
+      error: err.message,
+    });
   }
-
-  res.json({ message: 'API keys updated successfully', hasKeys: true });
 });
 
 // Check API key status
 app.get('/api/settings/status', (req, res) => {
-  res.json({ hasKeys: binance.hasKeys() });
+  res.json({
+    hasKeys: binance.hasKeys(),
+    useTestnet: binance.useTestnet !== false,
+    wsBaseUrl: binance.wsBaseUrl,
+  });
 });
 
 // ─── REST API Routes ───

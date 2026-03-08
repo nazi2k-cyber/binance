@@ -491,15 +491,33 @@ document.getElementById('saveSettings').addEventListener('click', async () => {
     return;
   }
 
+  const saveBtn = document.getElementById('saveSettings');
+  saveBtn.textContent = 'Verifying...';
+  saveBtn.disabled = true;
+
   try {
-    await api('/settings', {
+    const result = await api('/settings', {
       method: 'POST',
       body: { apiKey, apiSecret, useTestnet },
     });
-    showToast('API keys saved successfully!', 'success');
-    document.getElementById('settingsModal').classList.add('hidden');
+
+    if (result.verified) {
+      showToast('API keys verified and saved!', 'success');
+      document.getElementById('settingsModal').classList.add('hidden');
+      // Reload market data with new keys
+      loadTickers();
+      // Reconnect WebSocket if on trade tab
+      if (state.currentSymbol) {
+        connectWebSocket(state.currentSymbol);
+      }
+    } else {
+      showToast('Keys saved but verification failed: ' + (result.error || 'Unknown error'), 'error');
+    }
   } catch {
     showToast('Failed to save settings', 'error');
+  } finally {
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = false;
   }
 });
 
@@ -523,7 +541,15 @@ function formatPrice(price) {
   try {
     const status = await api('/settings/status');
     if (!status.hasKeys) {
-      showToast('API keys not configured. Go to Settings to add your Binance API keys.', 'error');
+      showToast('API keys not configured. Tap the gear icon to add your Binance API keys.', 'error');
+      // Auto-open settings modal for first-time users
+      setTimeout(() => {
+        document.getElementById('settingsModal').classList.remove('hidden');
+      }, 1500);
+    }
+    // Set testnet toggle based on server state
+    if (typeof status.useTestnet === 'boolean') {
+      document.getElementById('testnetToggle').checked = status.useTestnet;
     }
   } catch {}
 })();

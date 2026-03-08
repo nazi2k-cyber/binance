@@ -122,12 +122,16 @@ export class BinanceAPI {
     return this.request('GET', '/v3/allOrders', { symbol, limit }, true);
   }
 
-  updateKeys(apiKey, apiSecret) {
+  updateKeys(apiKey, apiSecret, useTestnet) {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
+    if (typeof useTestnet === 'boolean') {
+      this.setTestnet(useTestnet);
+    }
   }
 
   setTestnet(useTestnet) {
+    this.useTestnet = useTestnet;
     this.baseUrl = useTestnet
       ? 'https://testnet.binance.vision/api'
       : 'https://api.binance.com/api';
@@ -137,6 +141,6 @@ export class BinanceAPI {
   }
 
   hasKeys() {
-    return !!(this.apiKey && this.apiSecret);
+    return !!(this.apiKey && this.apiSecret && this.apiKey.length > 0 && this.apiSecret.length > 0);
   }
 }
