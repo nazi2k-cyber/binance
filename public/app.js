@@ -58,7 +58,7 @@ async function loadTickers() {
     const usdtPairs = data.filter(t => t.symbol.endsWith('USDT')).slice(0, 30);
 
     // Get 24h changes
-    const tickers24h = await api('/ticker/' + '');
+    const tickers24h = await api('/ticker/24h');
     const changeMap = {};
     if (Array.isArray(tickers24h)) {
       tickers24h.forEach(t => { changeMap[t.symbol] = t; });
@@ -481,9 +481,26 @@ document.getElementById('closeSettings').addEventListener('click', () => {
   document.getElementById('settingsModal').classList.add('hidden');
 });
 
-document.getElementById('saveSettings').addEventListener('click', () => {
-  showToast('Settings saved (server restart required)', 'success');
-  document.getElementById('settingsModal').classList.add('hidden');
+document.getElementById('saveSettings').addEventListener('click', async () => {
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  const apiSecret = document.getElementById('apiSecretInput').value.trim();
+  const useTestnet = document.getElementById('testnetToggle').checked;
+
+  if (!apiKey || !apiSecret) {
+    showToast('API Key and Secret are required', 'error');
+    return;
+  }
+
+  try {
+    await api('/settings', {
+      method: 'POST',
+      body: { apiKey, apiSecret, useTestnet },
+    });
+    showToast('API keys saved successfully!', 'success');
+    document.getElementById('settingsModal').classList.add('hidden');
+  } catch {
+    showToast('Failed to save settings', 'error');
+  }
 });
 
 // Close modal on backdrop click
@@ -501,6 +518,16 @@ function formatPrice(price) {
 }
 
 // ─── Init ───
+// Check API key status on startup
+(async () => {
+  try {
+    const status = await api('/settings/status');
+    if (!status.hasKeys) {
+      showToast('API keys not configured. Go to Settings to add your Binance API keys.', 'error');
+    }
+  } catch {}
+})();
+
 loadTickers();
 
 // Auto-refresh tickers every 30s

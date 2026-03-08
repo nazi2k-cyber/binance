@@ -28,6 +28,30 @@ const binance = new BinanceAPI(
 // Active algo trading bots
 const activeBots = new Map();
 
+// ─── API Key Management ───
+
+// Update API keys at runtime
+app.post('/api/settings', (req, res) => {
+  const { apiKey, apiSecret, useTestnet } = req.body;
+
+  if (!apiKey || !apiSecret) {
+    return res.status(400).json({ error: 'API Key and Secret are required' });
+  }
+
+  binance.updateKeys(apiKey, apiSecret);
+
+  if (typeof useTestnet === 'boolean') {
+    binance.setTestnet(useTestnet);
+  }
+
+  res.json({ message: 'API keys updated successfully', hasKeys: true });
+});
+
+// Check API key status
+app.get('/api/settings/status', (req, res) => {
+  res.json({ hasKeys: binance.hasKeys() });
+});
+
 // ─── REST API Routes ───
 
 // Get available trading pairs
@@ -49,7 +73,17 @@ app.get('/api/symbols', async (req, res) => {
   }
 });
 
-// Get ticker data
+// Get all 24h tickers
+app.get('/api/ticker/24h', async (req, res) => {
+  try {
+    const data = await binance.getTicker24h();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get ticker data for specific symbol
 app.get('/api/ticker/:symbol', async (req, res) => {
   try {
     const data = await binance.getTicker24h(req.params.symbol);
