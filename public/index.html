@@ -26,6 +26,7 @@
     <button class="tab-btn" data-tab="trade">Trade</button>
     <button class="tab-btn" data-tab="bot">Bot</button>
     <button class="tab-btn" data-tab="portfolio">Portfolio</button>
+    <button class="tab-btn" data-tab="logs">Logs</button>
   </nav>
 
   <!-- Tab Content -->
@@ -194,6 +195,35 @@
         <div id="openOrdersList" class="orders-list">
           <p class="no-orders">No open orders</p>
         </div>
+      </div>
+    </section>
+    <!-- Logs Tab -->
+    <section id="tab-logs" class="tab-content">
+      <div class="logs-header">
+        <h3>Error Logs</h3>
+        <div class="logs-actions">
+          <select id="logLevelFilter">
+            <option value="">All Levels</option>
+            <option value="error">Error</option>
+            <option value="warn">Warning</option>
+            <option value="info">Info</option>
+          </select>
+          <select id="logSourceFilter">
+            <option value="">All Sources</option>
+            <option value="API">API</option>
+            <option value="Order">Order</option>
+            <option value="Bot">Bot</option>
+            <option value="Strategy">Strategy</option>
+            <option value="Account">Account</option>
+            <option value="WebSocket">WebSocket</option>
+          </select>
+          <button id="clearLogsBtn" class="btn btn-danger btn-sm">Clear</button>
+          <button id="refreshLogsBtn" class="btn btn-primary btn-sm">Refresh</button>
+        </div>
+      </div>
+      <div class="logs-stats" id="logsStats"></div>
+      <div id="logsList" class="logs-list">
+        <p class="no-logs">No error logs</p>
       </div>
     </section>
   </main>
