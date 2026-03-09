@@ -413,8 +413,14 @@ app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '..', 'public', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Testnet mode: ${process.env.USE_TESTNET !== 'false'}`);
-});
+// Export for Vercel serverless
+export default app;
+
+// Only start HTTP server when running locally (not on Vercel)
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Testnet mode: ${process.env.USE_TESTNET !== 'false'}`);
+  });
+}
