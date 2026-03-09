@@ -13,8 +13,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
 
 app.use(express.json());
 app.use(express.static(join(__dirname, '..', 'public')));
@@ -356,50 +354,9 @@ app.delete('/api/logs', (req, res) => {
   res.json({ message: 'All logs cleared' });
 });
 
-// ─── WebSocket ───
+// ─── WebSocket (only used when running locally, not on Vercel) ───
 
 const wsClients = new Set();
-
-wss.on('connection', (ws) => {
-  wsClients.add(ws);
-
-  // Subscribe to Binance price stream
-  let binanceWs = null;
-
-  ws.on('message', async (msg) => {
-    try {
-      const data = JSON.parse(msg);
-      if (data.action === 'subscribe' && data.symbol) {
-        const symbol = data.symbol.toLowerCase();
-        if (binanceWs) binanceWs.close();
-
-        const { default: WebSocket } = await import('ws');
-        binanceWs = new WebSocket(`${binance.wsBaseUrl}/${symbol}@trade`);
-        binanceWs.on('message', (raw) => {
-          if (ws.readyState === 1) {
-            const trade = JSON.parse(raw);
-            ws.send(JSON.stringify({
-              type: 'trade',
-              symbol: trade.s,
-              price: trade.p,
-              quantity: trade.q,
-              time: trade.T,
-              isBuyerMaker: trade.m,
-            }));
-          }
-        });
-        binanceWs.on('error', (err) => {
-          addErrorLog('warn', 'WebSocket', `Binance WS error for ${symbol}: ${err.message || 'Connection error'}`);
-        });
-      }
-    } catch {}
-  });
-
-  ws.on('close', () => {
-    wsClients.delete(ws);
-    if (binanceWs) binanceWs.close();
-  });
-});
 
 function broadcastBotUpdate(symbol, data) {
   const msg = JSON.stringify({ type: 'bot_update', symbol, data });
@@ -416,8 +373,51 @@ app.get('*', (req, res) => {
 // Export for Vercel serverless
 export default app;
 
-// Only start HTTP server when running locally (not on Vercel)
+// Only start HTTP server with WebSocket when running locally (not on Vercel)
 if (!process.env.VERCEL) {
+  const server = createServer(app);
+  const wss = new WebSocketServer({ server, path: '/ws' });
+
+  wss.on('connection', (ws) => {
+    wsClients.add(ws);
+
+    let binanceWs = null;
+
+    ws.on('message', async (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (data.action === 'subscribe' && data.symbol) {
+          const symbol = data.symbol.toLowerCase();
+          if (binanceWs) binanceWs.close();
+
+          const { default: WebSocket } = await import('ws');
+          binanceWs = new WebSocket(`${binance.wsBaseUrl}/${symbol}@trade`);
+          binanceWs.on('message', (raw) => {
+            if (ws.readyState === 1) {
+              const trade = JSON.parse(raw);
+              ws.send(JSON.stringify({
+                type: 'trade',
+                symbol: trade.s,
+                price: trade.p,
+                quantity: trade.q,
+                time: trade.T,
+                isBuyerMaker: trade.m,
+              }));
+            }
+          });
+          binanceWs.on('error', (err) => {
+            addErrorLog('warn', 'WebSocket', `Binance WS error for ${symbol}: ${err.message || 'Connection error'}`);
+          });
+        }
+      } catch {}
+    });
+
+    ws.on('close', () => {
+      wsClients.delete(ws);
+      if (binanceWs) binanceWs.close();
+    });
+  });
+
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
